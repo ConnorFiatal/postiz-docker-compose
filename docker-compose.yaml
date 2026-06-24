@@ -36,6 +36,15 @@ services:
       - coolify.managed=true
       - coolify.applicationId=1
       - coolify.type=application
+      - traefik.enable=true
+      - 'traefik.http.routers.postiz.rule=Host(`socialshare.gooddoglabs.net`)'
+      - traefik.http.routers.postiz.entryPoints=https
+      - traefik.http.routers.postiz.tls=true
+      - traefik.http.routers.postiz.tls.certresolver=letsencrypt
+      - traefik.http.services.postiz.loadbalancer.server.port=5000
+      - 'traefik.http.routers.postiz-http.rule=Host(`socialshare.gooddoglabs.net`)'
+      - traefik.http.routers.postiz-http.entryPoints=http
+      - traefik.http.routers.postiz-http.middlewares=redirect-to-https
     depends_on:
       postiz-postgres:
         condition: service_healthy
@@ -43,6 +52,9 @@ services:
         condition: service_healthy
       temporal:
         condition: service_started
+    networks:
+      - default
+      - coolify
 
   postiz-postgres:
     image: 'postgres:17-alpine'
@@ -59,6 +71,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    networks:
+      - default
 
   postiz-redis:
     image: 'redis:7.2'
@@ -71,6 +85,8 @@ services:
       retries: 10
     volumes:
       - postiz-redis-data:/data
+    networks:
+      - default
 
   temporal:
     image: 'temporalio/auto-setup:1.24'
@@ -85,6 +101,8 @@ services:
     depends_on:
       temporal-postgres:
         condition: service_healthy
+    networks:
+      - default
 
   temporal-postgres:
     image: 'postgres:17-alpine'
@@ -101,6 +119,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    networks:
+      - default
 
 volumes:
   postiz-config:
@@ -108,3 +128,8 @@ volumes:
   postgres-volume:
   postiz-redis-data:
   temporal-postgres-volume:
+
+networks:
+  default:
+  coolify:
+    external: true
