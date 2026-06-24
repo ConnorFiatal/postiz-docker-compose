@@ -1,23 +1,23 @@
 services:
   postiz:
-    image: ghcr.io/gitroomhq/postiz-app:latest
+    image: 'ghcr.io/gitroomhq/postiz-app:latest'
     container_name: postiz
     restart: always
     environment:
       MAIN_URL: 'https://socialshare.gooddoglabs.net'
       FRONTEND_URL: 'https://socialshare.gooddoglabs.net'
       NEXT_PUBLIC_BACKEND_URL: 'https://socialshare.gooddoglabs.net/api'
-      JWT_SECRET: 'a7k9mL2pQ5vX8wNbYcZdFgHjKtUvWxYz'
+      JWT_SECRET: a7k9mL2pQ5vX8wNbYcZdFgHjKtUvWxYz
       DATABASE_URL: 'postgresql://postiz-user:postiz-password@postiz-postgres:5432/postiz-db-local'
       REDIS_URL: 'redis://postiz-redis:6379'
       BACKEND_INTERNAL_URL: 'http://localhost:3000'
-      TEMPORAL_ADDRESS: "temporal:7233"
+      TEMPORAL_ADDRESS: 'temporal:7233'
       IS_GENERAL: 'true'
       DISABLE_REGISTRATION: 'false'
       RUN_CRON: 'true'
-      STORAGE_PROVIDER: 'local'
-      UPLOAD_DIRECTORY: '/uploads'
-      NEXT_PUBLIC_UPLOAD_DIRECTORY: '/uploads'
+      STORAGE_PROVIDER: local
+      UPLOAD_DIRECTORY: /uploads
+      NEXT_PUBLIC_UPLOAD_DIRECTORY: /uploads
       X_API_KEY: ''
       X_API_SECRET: ''
       LINKEDIN_CLIENT_ID: ''
@@ -29,3 +29,82 @@ services:
       BEEHIIVE_API_KEY: ''
       BEEHIIVE_PUBLICATION_ID: ''
       THREADS_APP_ID: ''
+    volumes:
+      - postiz-config:/config/
+      - postiz-uploads:/uploads/
+    labels:
+      - coolify.managed=true
+      - coolify.applicationId=1
+      - coolify.type=application
+    depends_on:
+      postiz-postgres:
+        condition: service_healthy
+      postiz-redis:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+
+  postiz-postgres:
+    image: 'postgres:17-alpine'
+    container_name: postiz-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postiz-user
+      POSTGRES_PASSWORD: postiz-password
+      POSTGRES_DB: postiz-db-local
+    volumes:
+      - postgres-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postiz-user -d postiz-db-local']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postiz-redis:
+    image: 'redis:7.2'
+    container_name: postiz-redis
+    restart: always
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - postiz-redis-data:/data
+
+  temporal:
+    image: 'temporalio/auto-setup:1.24'
+    container_name: temporal
+    restart: always
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: postiz-user
+      POSTGRES_PWD: postiz-password
+      POSTGRES_SEEDS: temporal-postgres
+    depends_on:
+      temporal-postgres:
+        condition: service_healthy
+
+  temporal-postgres:
+    image: 'postgres:17-alpine'
+    container_name: temporal-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postiz-user
+      POSTGRES_PASSWORD: postiz-password
+      POSTGRES_DB: temporal
+    volumes:
+      - temporal-postgres-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postiz-user']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postiz-config:
+  postiz-uploads:
+  postgres-volume:
+  postiz-redis-data:
+  temporal-postgres-volume:
