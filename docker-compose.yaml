@@ -1,6 +1,6 @@
 services:
   postiz:
-    image: 'ghcr.io/gitroomhq/postiz-app:latest'
+    image: 'ghcr.io/gitroomhq/postiz-app:v2.11.3'
     container_name: postiz
     restart: always
     environment:
@@ -11,13 +11,23 @@ services:
       DATABASE_URL: 'postgresql://postiz-user:postiz-password@postiz-postgres:5432/postiz-db-local'
       REDIS_URL: 'redis://postiz-redis:6379'
       BACKEND_INTERNAL_URL: 'http://localhost:3000'
-      TEMPORAL_ADDRESS: 'temporal:7233'
       IS_GENERAL: 'true'
       DISABLE_REGISTRATION: 'false'
       RUN_CRON: 'true'
       STORAGE_PROVIDER: local
       UPLOAD_DIRECTORY: /uploads
       NEXT_PUBLIC_UPLOAD_DIRECTORY: /uploads
+      X_API_KEY: ''
+      X_API_SECRET: ''
+      LINKEDIN_CLIENT_ID: ''
+      LINKEDIN_CLIENT_SECRET: ''
+      REDDIT_CLIENT_ID: ''
+      REDDIT_CLIENT_SECRET: ''
+      GITHUB_CLIENT_ID: ''
+      GITHUB_CLIENT_SECRET: ''
+      BEEHIIVE_API_KEY: ''
+      BEEHIIVE_PUBLICATION_ID: ''
+      THREADS_APP_ID: ''
     volumes:
       - postiz-config:/config/
       - postiz-uploads:/uploads/
@@ -40,7 +50,6 @@ services:
     networks:
       - default
       - coolify
-      - temporal-network
 
   postiz-postgres:
     image: 'postgres:17-alpine'
@@ -74,71 +83,13 @@ services:
     networks:
       - default
 
-  temporal-elasticsearch:
-    container_name: temporal-elasticsearch
-    image: elasticsearch:7.17.27
-    environment:
-      - cluster.routing.allocation.disk.threshold_enabled=true
-      - cluster.routing.allocation.disk.watermark.low=512mb
-      - cluster.routing.allocation.disk.watermark.high=256mb
-      - cluster.routing.allocation.disk.watermark.flood_stage=128mb
-      - discovery.type=single-node
-      - ES_JAVA_OPTS=-Xms256m -Xmx256m
-      - xpack.security.enabled=false
-    networks:
-      - temporal-network
-    expose:
-      - 9200
-    volumes:
-      - temporal-es-data:/var/lib/elasticsearch/data
-
-  temporal-postgresql:
-    container_name: temporal-postgresql
-    image: postgres:16
-    environment:
-      POSTGRES_PASSWORD: temporal
-      POSTGRES_USER: temporal
-    networks:
-      - temporal-network
-    expose:
-      - 5432
-    volumes:
-      - temporal-pg-data:/var/lib/postgresql/data
-
-  temporal:
-    container_name: temporal
-    image: temporalio/auto-setup:1.28.1
-    restart: always
-    depends_on:
-      - temporal-postgresql
-      - temporal-elasticsearch
-    environment:
-      - DB=postgres12
-      - DB_PORT=5432
-      - POSTGRES_USER=temporal
-      - POSTGRES_PWD=temporal
-      - POSTGRES_SEEDS=temporal-postgresql
-      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
-      - ENABLE_ES=true
-      - ES_SEEDS=temporal-elasticsearch
-      - ES_VERSION=v7
-      - TEMPORAL_NAMESPACE=default
-    networks:
-      - temporal-network
-    volumes:
-      - ./dynamicconfig:/etc/temporal/config/dynamicconfig
-
 volumes:
   postgres-volume:
   postiz-redis-data:
   postiz-config:
   postiz-uploads:
-  temporal-es-data:
-  temporal-pg-data:
 
 networks:
   default:
   coolify:
     external: true
-  temporal-network:
-    driver: bridge
