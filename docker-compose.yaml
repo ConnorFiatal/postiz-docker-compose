@@ -7,7 +7,7 @@ services:
       MAIN_URL: 'https://socialshare.gooddoglabs.net'
       FRONTEND_URL: 'https://socialshare.gooddoglabs.net'
       NEXT_PUBLIC_BACKEND_URL: 'https://socialshare.gooddoglabs.net/api'
-      JWT_SECRET: a7k9mL2pQ5vX8wNbYcZdFgHjKtUvWxYz
+      JWT_SECRET: 'CHANGE_ME_run_openssl_rand_hex_32'
       DATABASE_URL: 'postgresql://postiz-user:postiz-password@postiz-postgres:5432/postiz-db-local'
       REDIS_URL: 'redis://postiz-redis:6379'
       BACKEND_INTERNAL_URL: 'http://localhost:3000'
@@ -18,24 +18,11 @@ services:
       STORAGE_PROVIDER: local
       UPLOAD_DIRECTORY: /uploads
       NEXT_PUBLIC_UPLOAD_DIRECTORY: /uploads
-      X_API_KEY: ''
-      X_API_SECRET: ''
-      LINKEDIN_CLIENT_ID: ''
-      LINKEDIN_CLIENT_SECRET: ''
-      REDDIT_CLIENT_ID: ''
-      REDDIT_CLIENT_SECRET: ''
-      GITHUB_CLIENT_ID: ''
-      GITHUB_CLIENT_SECRET: ''
-      BEEHIIVE_API_KEY: ''
-      BEEHIIVE_PUBLICATION_ID: ''
-      THREADS_APP_ID: ''
     volumes:
       - postiz-config:/config/
       - postiz-uploads:/uploads/
     labels:
       - coolify.managed=true
-      - coolify.applicationId=1
-      - coolify.type=application
       - traefik.enable=true
       - 'traefik.http.routers.postiz.rule=Host(`socialshare.gooddoglabs.net`)'
       - traefik.http.routers.postiz.entryPoints=https
@@ -50,27 +37,26 @@ services:
         condition: service_healthy
       postiz-redis:
         condition: service_healthy
-      temporal:
-        condition: service_started
     networks:
       - default
       - coolify
+      - temporal-network
 
   postiz-postgres:
     image: 'postgres:17-alpine'
     container_name: postiz-postgres
     restart: always
     environment:
-      POSTGRES_USER: postiz-user
       POSTGRES_PASSWORD: postiz-password
+      POSTGRES_USER: postiz-user
       POSTGRES_DB: postiz-db-local
     volumes:
       - postgres-volume:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postiz-user -d postiz-db-local']
-      interval: 5s
+      test: pg_isready -U postiz-user -d postiz-db-local
+      interval: 10s
       timeout: 3s
-      retries: 10
+      retries: 3
     networks:
       - default
 
@@ -79,57 +65,80 @@ services:
     container_name: postiz-redis
     restart: always
     healthcheck:
-      test: ['CMD-SHELL', 'redis-cli ping']
-      interval: 5s
+      test: redis-cli ping
+      interval: 10s
       timeout: 3s
-      retries: 10
+      retries: 3
     volumes:
       - postiz-redis-data:/data
     networks:
       - default
 
-  temporal:
-    image: 'temporalio/auto-setup:1.24'
-    container_name: temporal
-    restart: always
+  temporal-elasticsearch:
+    container_name: temporal-elasticsearch
+    image: elasticsearch:7.17.27
     environment:
-      DB: postgres12
-      DB_PORT: 5432
-      POSTGRES_USER: postiz-user
-      POSTGRES_PWD: postiz-password
-      POSTGRES_SEEDS: temporal-postgres
-    depends_on:
-      temporal-postgres:
-        condition: service_healthy
+      - cluster.routing.allocation.disk.threshold_enabled=true
+      - cluster.routing.allocation.disk.watermark.low=512mb
+      - cluster.routing.allocation.disk.watermark.high=256mb
+      - cluster.routing.allocation.disk.watermark.flood_stage=128mb
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms256m -Xmx256m
+      - xpack.security.enabled=false
     networks:
-      - default
-
-  temporal-postgres:
-    image: 'postgres:17-alpine'
-    container_name: temporal-postgres
-    restart: always
-    environment:
-      POSTGRES_USER: postiz-user
-      POSTGRES_PASSWORD: postiz-password
-      POSTGRES_DB: temporal
+      - temporal-network
+    expose:
+      - 9200
     volumes:
-      - temporal-postgres-volume:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postiz-user']
-      interval: 5s
-      timeout: 3s
-      retries: 10
+      - temporal-es-data:/var/lib/elasticsearch/data
+
+  temporal-postgresql:
+    container_name: temporal-postgresql
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_USER: temporal
     networks:
-      - default
+      - temporal-network
+    expose:
+      - 5432
+    volumes:
+      - temporal-pg-data:/var/lib/postgresql/data
+
+  temporal:
+    container_name: temporal
+    image: temporalio/auto-setup:1.28.1
+    restart: always
+    depends_on:
+      - temporal-postgresql
+      - temporal-elasticsearch
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=temporal-postgresql
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+      - ENABLE_ES=true
+      - ES_SEEDS=temporal-elasticsearch
+      - ES_VERSION=v7
+      - TEMPORAL_NAMESPACE=default
+    networks:
+      - temporal-network
+    volumes:
+      - ./dynamicconfig:/etc/temporal/config/dynamicconfig
 
 volumes:
-  postiz-config:
-  postiz-uploads:
   postgres-volume:
   postiz-redis-data:
-  temporal-postgres-volume:
+  postiz-config:
+  postiz-uploads:
+  temporal-es-data:
+  temporal-pg-data:
 
 networks:
   default:
   coolify:
     external: true
+  temporal-network:
+    driver: bridge
